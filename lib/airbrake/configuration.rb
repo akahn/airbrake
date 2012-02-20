@@ -7,8 +7,12 @@ module Airbrake
         :http_open_timeout, :http_read_timeout, :ignore, :ignore_by_filters,
         :ignore_user_agent, :notifier_name, :notifier_url, :notifier_version,
         :params_filters, :project_root, :port, :protocol, :proxy_host,
-        :proxy_pass, :proxy_port, :proxy_user, :secure, :use_system_ssl_cert_chain, 
-        :framework, :user_information, :rescue_rake_exceptions].freeze
+        :proxy_pass, :proxy_port, :proxy_user, :secure, :use_system_ssl_cert_chain,
+        :framework, :user_information, :rescue_rake_exceptions,
+        :elasticsearch_host, :elasticsearch_port].freeze
+
+    # Add options for elasticsearch endpoint
+    attr_accessor :elasticsearch_host, :elasticsearch_port
 
     # The API key for your project, found on the project edit form.
     attr_accessor :api_key
@@ -22,7 +26,7 @@ module Airbrake
 
     # +true+ for https connections, +false+ for http connections.
     attr_accessor :secure
-    
+
     # +true+ to use whatever CAs OpenSSL has installed on your system. +false+ to use the ca-bundle.crt file included in Airbrake itself (reccomended and default)
     attr_accessor :use_system_ssl_cert_chain
 
@@ -236,7 +240,7 @@ module Airbrake
       warn 'config.environment_filters has been deprecated and has no effect.'
       []
     end
-    
+
     def ca_bundle_path
       if use_system_ssl_cert_chain? && File.exist?(OpenSSL::X509::DEFAULT_CERT_FILE)
         OpenSSL::X509::DEFAULT_CERT_FILE

@@ -1,7 +1,7 @@
 module Airbrake
   # Sends out the notice to Airbrake
   class Sender
-    
+
     NOTICES_URI = '/notifier_api/v2/notices/'.freeze
     HTTP_ERRORS = [Timeout::Error,
                    Errno::EINVAL,
@@ -12,21 +12,33 @@ module Airbrake
                    Net::ProtocolError,
                    Errno::ECONNREFUSED].freeze
 
+    attr_accessor :elasticsearch_host, :elasticsearch_port, :elasticsearch_connection
+
     def initialize(options = {})
       [ :proxy_host,
-        :proxy_port, 
-        :proxy_user, 
-        :proxy_pass, 
+        :proxy_port,
+        :proxy_user,
+        :proxy_pass,
         :protocol,
-        :host, 
-        :port, 
-        :secure, 
-        :use_system_ssl_cert_chain, 
-        :http_open_timeout, 
-        :http_read_timeout
+        :host,
+        :port,
+        :secure,
+        :use_system_ssl_cert_chain,
+        :http_open_timeout,
+        :http_read_timeout,
+        :elasticsearch_host,
+        :elasticsearch_port
       ].each do |option|
         instance_variable_set("@#{option}", options[option])
       end
+    end
+
+    def send_to_elasticsearch(data)
+      es = ElasticSearch.new("http://#{elasticsearch_host}:#{elasticsearch_port}", :index => "exceptions", :type => "exception")
+      Airbrake.logger.info(data)
+      Airbrake.logger.info(es)
+      resp = es.index(data)
+      Airbrake.logger.info(resp)
     end
 
     # Sends the notice data off to Airbrake for processing.
