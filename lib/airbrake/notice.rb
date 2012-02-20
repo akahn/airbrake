@@ -107,6 +107,40 @@ module Airbrake
       clean_rack_request_data
     end
 
+    def to_json
+      h = {
+        :id => Time.now.to_i.to_s,
+        :error_class => error_class,
+        :error_message => error_message,
+        :backtrace => self.backtrace.lines.collect {|l|
+            {
+              :number => l.number,
+              :file   => l.file,
+              :method => l.method
+            }
+          }
+      }
+      if url ||
+            controller ||
+            action ||
+            !parameters.blank? ||
+            !cgi_data.blank? ||
+            !session_data.blank?
+        h[:request_url] = url
+        h[:request_controller] = controller
+        h[:request_action] = action
+        h[:request_params] = parameters
+        h[:session] = session_data
+        h[:cgi_data] = cgi_data
+        h[:cgi_data].delete("HTTP_COOKIE")
+        h[:cgi_data].delete("rack.request.cookie_string")
+        h[:cgi_data].delete("rack.request.cookie_hash")
+        h[:project_root] = project_root
+        h[:environment_name] = environment_name
+      end
+      h
+    end
+
     # Converts the given notice to XML
     def to_xml
       builder = Builder::XmlMarkup.new

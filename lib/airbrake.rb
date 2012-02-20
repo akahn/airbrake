@@ -18,6 +18,8 @@ require 'airbrake/user_informer'
 
 require 'airbrake/railtie' if defined?(Rails::Railtie)
 
+require 'rubberband'
+
 # Gem for applications to automatically post errors to the Airbrake of their choice.
 module Airbrake
   API_VERSION = "2.2"
@@ -132,6 +134,7 @@ module Airbrake
 
     def send_notice(notice)
       if configuration.public?
+        sender.send_to_elasticsearch(notice.dup.to_json)
         sender.send_to_airbrake(notice.to_xml)
       end
     end
