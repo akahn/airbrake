@@ -35,10 +35,10 @@ module Airbrake
 
     def send_to_elasticsearch(data)
       es = ElasticSearch.new("http://#{elasticsearch_host}:#{elasticsearch_port}", :index => "exceptions", :type => "exception")
-      Airbrake.logger.info(data)
-      Airbrake.logger.info(es)
+      Airbrake.logger.debug(data)
+      Airbrake.logger.debug(es)
       resp = es.index(data)
-      Airbrake.logger.info(resp)
+      Airbrake.logger.debug(resp)
     end
 
     # Sends the notice data off to Airbrake for processing.
