@@ -34,10 +34,12 @@ module Airbrake
     end
 
     def send_to_elasticsearch(data)
-      es = ElasticSearch.new("http://#{elasticsearch_host}:#{elasticsearch_port}", :index => "exceptions", :type => "exception")
-      Airbrake.logger.debug(data)
-      Airbrake.logger.debug(es)
-      resp = es.index(data)
+      begin
+        es = ElasticSearch.new("http://#{elasticsearch_host}:#{elasticsearch_port}", :index => "exceptions", :type => "exception")
+        resp = es.index(data)
+      rescue ElasticSearch::ConnectionFailed
+        Airbrake.logger.warn("CONNECTION FAILED")
+      end
       Airbrake.logger.debug(resp)
     end
 
