@@ -9,10 +9,10 @@ module Airbrake
         :params_filters, :project_root, :port, :protocol, :proxy_host,
         :proxy_pass, :proxy_port, :proxy_user, :secure, :use_system_ssl_cert_chain,
         :framework, :user_information, :rescue_rake_exceptions,
-        :elasticsearch_host, :elasticsearch_port].freeze
+        :elasticsearch_host, :elasticsearch_port, :elasticsearch_index].freeze
 
     # Add options for elasticsearch endpoint
-    attr_accessor :elasticsearch_host, :elasticsearch_port
+    attr_accessor :elasticsearch_host, :elasticsearch_port, :elasticsearch_index
 
     # The API key for your project, found on the project edit form.
     attr_accessor :api_key

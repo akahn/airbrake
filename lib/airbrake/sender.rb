@@ -12,7 +12,7 @@ module Airbrake
                    Net::ProtocolError,
                    Errno::ECONNREFUSED].freeze
 
-    attr_accessor :elasticsearch_host, :elasticsearch_port, :elasticsearch_connection
+    attr_accessor :elasticsearch_host, :elasticsearch_port, :elasticsearch_connection, :elasticsearch_index
 
     def initialize(options = {})
       [ :proxy_host,
@@ -27,7 +27,8 @@ module Airbrake
         :http_open_timeout,
         :http_read_timeout,
         :elasticsearch_host,
-        :elasticsearch_port
+        :elasticsearch_port,
+        :elasticsearch_index
       ].each do |option|
         instance_variable_set("@#{option}", options[option])
       end
@@ -35,7 +36,7 @@ module Airbrake
 
     def send_to_elasticsearch(data)
       begin
-        es = ElasticSearch.new("http://#{elasticsearch_host}:#{elasticsearch_port}", :index => "exceptions", :type => "exception")
+        es = ElasticSearch.new("http://#{elasticsearch_host}:#{elasticsearch_port}", :index => "#{elasticsearch_index}", :type => "exception")
         resp = es.index(data)
       rescue ElasticSearch::ConnectionFailed
         Airbrake.logger.warn("CONNECTION FAILED")
@@ -86,7 +87,7 @@ module Airbrake
 
     alias_method :secure?, :secure
     alias_method :use_system_ssl_cert_chain?, :use_system_ssl_cert_chain
-    
+
   private
 
     def url
@@ -102,7 +103,7 @@ module Airbrake
     def logger
       Airbrake.logger
     end
-    
+
     def setup_http_connection
       http =
         Net::HTTP::Proxy(proxy_host, proxy_port, proxy_user, proxy_pass).
@@ -119,7 +120,7 @@ module Airbrake
       else
         http.use_ssl     = false
       end
-      
+
       http
     rescue => e
       log :error, "[Airbrake::Sender#setup_http_connection] Failure initializing the HTTP connection.\nError: #{e.class} - #{e.message}\nBacktrace:\n#{e.backtrace.join("\n\t")}"
