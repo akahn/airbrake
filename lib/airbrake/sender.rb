@@ -40,6 +40,8 @@ module Airbrake
         resp = es.index(data)
       rescue ElasticSearch::ConnectionFailed
         Airbrake.logger.warn("CONNECTION FAILED")
+      rescue ElasticSearch::RequestError => e
+        Airbrake.logger.warn(e)
       rescue Patron::Error => e
         Airbrake.logger.warn(e)
       end
