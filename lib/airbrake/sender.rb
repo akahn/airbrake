@@ -44,6 +44,8 @@ module Airbrake
         Airbrake.logger.warn(e)
       rescue Patron::Error => e
         Airbrake.logger.warn(e)
+      rescue e
+        Airbrake.logger.warn(e)
       end
       Airbrake.logger.debug(resp)
     end
