@@ -42,8 +42,6 @@ module Airbrake
         Airbrake.logger.warn("CONNECTION FAILED")
       rescue ElasticSearch::RequestError => e
         Airbrake.logger.warn(e)
-      rescue Patron::Error => e
-        Airbrake.logger.warn(e)
       rescue e
         Airbrake.logger.warn(e)
       end
