@@ -13,7 +13,7 @@ Gem::Specification.new do |s|
 
   s.add_runtime_dependency("builder")
   s.add_runtime_dependency("activesupport")
-  s.add_runtime_dependency("rubberband")
+  s.add_runtime_dependency("rubberband", )
 
   s.add_development_dependency("actionpack",    "~> 2.3.8")
   s.add_development_dependency("activerecord",  "~> 2.3.8")
