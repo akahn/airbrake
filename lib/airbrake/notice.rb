@@ -109,7 +109,6 @@ module Airbrake
 
     def to_json
       h = {
-        :_timestamp => {:enabled => true},
         :id => Time.now.to_i.to_s,
         :error_class => error_class,
         :error_message => error_message,
