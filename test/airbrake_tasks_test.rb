@@ -1,4 +1,4 @@
-require File.dirname(__FILE__) + '/helper'
+require File.expand_path '../helper', __FILE__
 require 'rubygems'
 
 require File.dirname(__FILE__) + '/../lib/airbrake_tasks'
@@ -54,7 +54,7 @@ class AirbrakeTasksTest < Test::Unit::TestCase
 
           @options    = { :rails_env => "staging", :dry_run => false }
         end
-        
+
         context "performing a dry run" do
           setup { @output = AirbrakeTasks.deploy(@options.merge(:dry_run => true)) }
 
@@ -71,8 +71,8 @@ class AirbrakeTasksTest < Test::Unit::TestCase
             @output = AirbrakeTasks.deploy(@options)
           end
 
-          before_should "post to http://airbrake.io:80/deploys.txt" do
-            @http_proxy_class.expects(:new).with("airbrake.io", 80).returns(@http_proxy)
+          before_should "post to http://api.airbrake.io:80/deploys.txt" do
+            @http_proxy_class.expects(:new).with("api.airbrake.io", 80).returns(@http_proxy)
             @post.expects(:set_form_data).with(kind_of(Hash))
             @http_proxy.expects(:request).with(any_parameters).returns(successful_response)
           end
@@ -140,7 +140,7 @@ class AirbrakeTasksTest < Test::Unit::TestCase
         before_should "post to the custom host" do
           @post             = stub("post",     :set_form_data => nil)
           @http_proxy       = stub("proxy",    :request => @response)
-          
+
           @http_proxy_class = stub("proxy_class", :new => @http_proxy)
           @http_proxy_class.expects(:new).with("custom.host", 80).returns(@http_proxy)
           Net::HTTP.expects(:Proxy).with(any_parameters).returns(@http_proxy_class)

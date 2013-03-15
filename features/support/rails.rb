@@ -21,7 +21,9 @@ module RailsHelpers
 
   def rails_version
     @rails_version ||= begin
-      if bundler_manages_gems?
+      if ENV["RAILS_VERSION"]
+        ENV["RAILS_VERSION"]
+      elsif bundler_manages_gems?
         rails_version = open(gemfile_path).read.match(/gem.*rails["'].*["'](.+)["']/)[1]
       else
         environment_file = File.join(rails_root, 'config', 'environment.rb')
@@ -48,6 +50,10 @@ module RailsHelpers
 
   def rails_finds_generators_in_gems?
     rails3? || rails_version =~ /^2\./
+  end
+
+  def version_string
+    ENV['RAILS_VERSION'] || `tail -n 1 SUPPORTED_RAILS_VERSIONS` # use latest version if ENV["RAILS_VERSION"] is undefined
   end
 
   def environment_path
@@ -110,10 +116,14 @@ module RailsHelpers
   def perform_request(uri, environment = 'production')
     if rails3?
       request_script = <<-SCRIPT
-        require 'config/environment'
+        require File.expand_path('../config/environment', __FILE__)
+
 
         env      = Rack::MockRequest.env_for(#{uri.inspect})
-        response = RailsRoot::Application.call(env).last
+        response = RailsRoot::Application.call(env)
+
+
+        response = response.last if response.last.is_a?(ActionDispatch::Response)
 
         if response.is_a?(Array)
           puts response.join
@@ -126,7 +136,7 @@ module RailsHelpers
       @terminal.run("ruby -rthread ./script/rails runner -e #{environment} request.rb")
     elsif rails_uses_rack?
       request_script = <<-SCRIPT
-        require 'config/environment'
+        require File.expand_path('../config/environment', __FILE__)
 
         env = Rack::MockRequest.env_for(#{uri.inspect})
         app = Rack::Lint.new(ActionController::Dispatcher.new)
@@ -175,6 +185,16 @@ module RailsHelpers
       @terminal.cd(rails_root)
       @terminal.run("ruby -rthread ./script/runner -e #{environment} request.rb")
     end
+  end
+
+  def monkeypatch_old_version
+    monkeypatchin= <<-MONKEYPATCHIN
+
+    MissingSourceFile::REGEXPS << [/^cannot load such file -- (.+)$/i, 1]
+
+    MONKEYPATCHIN
+
+    File.open(File.join(rails_root,"config","initializers", 'monkeypatchin.rb'), 'w') { |file| file.write(monkeypatchin) }
   end
 end
 

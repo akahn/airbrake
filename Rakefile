@@ -7,9 +7,12 @@ rescue LoadError
   $stderr.puts "Please install cucumber: `gem install cucumber`"
   exit 1
 end
+require './lib/airbrake/version'
+
+FEATURES = ["sinatra","rack","metal","user_informer","rake"]
 
 desc 'Default: run unit tests.'
-task :default => [:test, "cucumber:rails:all"]
+task :default => [:test, "cucumber:rails:all"] + FEATURES
 
 desc "Clean out the tmp directory"
 task :clean do
@@ -64,18 +67,19 @@ EOF
     old     = File.read(file)
     version = Airbrake::VERSION
     message = "Bumping to version #{version}"
+    editor = ENV["EDITOR"] || "vim" # prefer vim if no env variable for editor is set
 
     File.open(file, "w") do |f|
       f.write <<EOF
 Version #{version} - #{Time.now}
 ===============================================================================
 
-#{`git log $(git tag | tail -1)..HEAD | git shortlog`}
+#{`git log $(git tag | grep -v rc | tail -1)..HEAD | git shortlog`}
 #{old}
 EOF
     end
 
-    exec ["#{ENV["EDITOR"]} #{file}",
+    exec ["#{editor} #{file}",
           "git commit -aqm '#{message}'",
           "git tag -a -m '#{message}' v#{version}",
           "echo '\n\n\033[32mMarked v#{version} /' `git show-ref -s refs/heads/master` 'for release. Run: rake changeling:push\033[0m\n\n'"].join(' && ')
@@ -96,7 +100,7 @@ EOF
   desc "Push the latest version and tags"
   task :push do |t|
     system("git push origin master")
-    system("git push origin $(git tag | tail -1)")
+    system("git push origin $(git tag | grep -v rc | tail -1)")
   end
 end
 
@@ -115,8 +119,19 @@ task :clobber => [:clobber_rdoc, :clobber_package]
 
 LOCAL_GEM_ROOT = File.join(GEM_ROOT, 'tmp', 'local_gems').freeze
 RAILS_VERSIONS = IO.read('SUPPORTED_RAILS_VERSIONS').strip.split("\n")
-LOCAL_GEMS = [['sham_rack', nil], ['capistrano', nil], ['sqlite3-ruby', nil], ['sinatra', nil], ['rake', '0.8.7']] +
-  RAILS_VERSIONS.collect { |version| ['rails', version] }
+LOCAL_GEMS =
+  [
+    ["rack","1.3.2"],
+  ] +
+  RAILS_VERSIONS.collect { |version| ['rails', version] } +
+  [
+    ['sham_rack', nil],
+    ['capistrano', nil],
+    ['sqlite3-ruby', nil],
+    ["therubyracer",nil],
+    ["sinatra",nil]
+  ]
+
 
 desc "Vendor test gems: Run this once to prepare your test environment"
 task :vendor_test_gems do
@@ -124,20 +139,26 @@ task :vendor_test_gems do
   old_gem_home = ENV['GEM_HOME']
   ENV['GEM_PATH'] = LOCAL_GEM_ROOT
   ENV['GEM_HOME'] = LOCAL_GEM_ROOT
+
   LOCAL_GEMS.each do |gem_name, version|
     gem_file_pattern = [gem_name, version || '*'].compact.join('-')
     version_option = version ? "-v #{version}" : ''
     pattern = File.join(LOCAL_GEM_ROOT, 'gems', "#{gem_file_pattern}")
     existing = Dir.glob(pattern).first
-    unless existing
-      command = "gem install -i #{LOCAL_GEM_ROOT} --no-ri --no-rdoc --backtrace #{version_option} #{gem_name}"
-      puts "Vendoring #{gem_file_pattern}..."
-      unless system("#{command} 2>&1")
-        puts "Command failed: #{command}"
-        exit(1)
-      end
+    if existing
+      puts "\nskipping #{gem_name} since it's already vendored," +
+      "remove it from the tmp directory first."
+      next
+    end
+
+    command = "gem install -i #{LOCAL_GEM_ROOT} --no-ri --no-rdoc --backtrace #{version_option} #{gem_name}"
+    puts "Vendoring #{gem_file_pattern}..."
+    unless system("#{command} 2>&1")
+      puts "Command failed: #{command}"
+      exit(1)
     end
   end
+
   ENV['GEM_PATH'] = old_gem_path
   ENV['GEM_HOME'] = old_gem_home
 end
@@ -149,13 +170,14 @@ end
 
 task :cucumber => [:vendor_test_gems]
 
-def run_rails_cucumbr_task(version, additional_cucumber_args)
+
+def run_rails_cucumber_task(version, additional_cucumber_args)
   puts "Testing Rails #{version}"
   if version.empty?
     raise "No Rails version specified - make sure ENV['RAILS_VERSION'] is set, e.g. with `rake cucumber:rails:all`"
   end
   ENV['RAILS_VERSION'] = version
-  cmd   = "cucumber --format #{ENV['CUCUMBER_FORMAT'] || 'progress'} #{additional_cucumber_args} features/rails.feature features/rails_with_js_notifier.feature" 
+  cmd   = "cucumber --format #{ENV['CUCUMBER_FORMAT'] || 'progress'} #{additional_cucumber_args} features/rails.feature features/rails_with_js_notifier.feature"
   puts "Running command: #{cmd}"
   system(cmd)
 end
@@ -165,14 +187,14 @@ def define_rails_cucumber_tasks(additional_cucumber_args = '')
     RAILS_VERSIONS.each do |version|
       desc "Test integration of the gem with Rails #{version}"
       task version => [:vendor_test_gems] do
-        exit 1 unless run_rails_cucumbr_task(version, additional_cucumber_args)
+        exit 1 unless run_rails_cucumber_task(version, additional_cucumber_args)
       end
     end
 
     desc "Test integration of the gem with all Rails versions"
     task :all do
       results = RAILS_VERSIONS.map do |version|
-        run_rails_cucumbr_task(version, additional_cucumber_args)
+        run_rails_cucumber_task(version, additional_cucumber_args)
       end
 
       exit 1 unless results.all?
@@ -186,5 +208,16 @@ namespace :cucumber do
   end
 
   define_rails_cucumber_tasks
-end
 
+  rule /#{"(" + FEATURES.join("|") + ")"}/ do |t|
+    framework = t.name
+    desc "Test integration of the gem with #{framework}"
+    task framework.to_sym do
+      puts "Testing #{framework.split(":").last}..."
+      cmd = "cucumber --format #{ENV['CUCUMBER_FORMAT'] || 'progress'} features/#{framework.split(":").last}.feature"
+      puts "Running command: #{cmd}"
+      system(cmd)
+    end
+  end
+
+end

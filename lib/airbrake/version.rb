@@ -1,3 +1,3 @@
 module Airbrake
-  VERSION = "3.0.10".freeze
+  VERSION = "3.1.6".freeze
 end

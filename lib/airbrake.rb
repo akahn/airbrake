@@ -1,13 +1,8 @@
+require "girl_friday"
 require 'net/http'
 require 'net/https'
 require 'rubygems'
-begin
-  require 'active_support'
-  require 'active_support/core_ext'
-rescue LoadError
-  require 'activesupport'
-  require 'activesupport/core_ext'
-end
+require 'airbrake/extensions/blank'
 require 'airbrake/version'
 require 'airbrake/configuration'
 require 'airbrake/notice'
@@ -20,9 +15,8 @@ require 'airbrake/railtie' if defined?(Rails::Railtie)
 
 require 'rubberband'
 
-# Gem for applications to automatically post errors to the Airbrake of their choice.
 module Airbrake
-  API_VERSION = "2.2"
+  API_VERSION = "2.3"
   LOG_PREFIX = "** [Airbrake] "
 
   HEADERS = {
@@ -54,16 +48,21 @@ module Airbrake
       write_verbose_log("Response from Airbrake: \n#{response}")
     end
 
+    # Prints out the details about the notice that wasn't sent to server
+    def report_notice(notice)
+      write_verbose_log("Notice details: \n#{notice}")
+    end
+
     # Returns the Ruby version, Rails version, and current Rails environment
     def environment_info
       info = "[Ruby: #{RUBY_VERSION}]"
-      info << " [#{configuration.framework}]"
-      info << " [Env: #{configuration.environment_name}]"
+      info << " [#{configuration.framework}]" if configuration.framework
+      info << " [Env: #{configuration.environment_name}]" if configuration.environment_name
     end
 
     # Writes out the given message to the #logger
     def write_verbose_log(message)
-      logger.info LOG_PREFIX + message if logger
+      logger.debug LOG_PREFIX + message if logger
     end
 
     # Look for the Rails logger currently defined
@@ -134,8 +133,16 @@ module Airbrake
 
     def send_notice(notice)
       if configuration.public?
+<<<<<<< HEAD
         sender.send_to_elasticsearch(notice.dup.to_json)
         sender.send_to_airbrake(notice.to_xml)
+=======
+        if configuration.async?
+          configuration.async.call(notice)
+        else
+          sender.send_to_airbrake(notice)
+        end
+>>>>>>> v3.1.6
       end
     end
 

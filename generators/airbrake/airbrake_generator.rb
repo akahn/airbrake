@@ -60,11 +60,13 @@ class AirbrakeGenerator < Rails::Generator::Base
     end
   end
 
+  def heroku_var(var,app_name = nil)
+    app = app_name ? "--app #{app_name}" : ''
+    `heroku config #{app} | grep -E "#{var.upcase}" | awk '{ print $3; }'`.strip
+  end
+
   def heroku_api_key
-    app = options[:app] ? " --app #{options[:app]}" : ''
-    cedar = !`heroku stack #{app} | grep \*\ cedar`.blank?
-    run = cedar ? " run " : ""
-    `heroku #{run} console#{app} 'puts ENV[%{HOPTOAD_API_KEY}]'`.split("\n").first
+    heroku_var("(hoptoad|airbrake)_api_key",options[:app]).split.find {|x| x unless x.blank?}
   end
 
   def heroku?

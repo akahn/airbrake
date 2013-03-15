@@ -1,9 +1,30 @@
 require 'uri'
 require 'active_support/core_ext/string/inflections'
 
+Given /^I have built and installed the "([^\"]*)" gem$/ do |gem_name|
+  @terminal.build_and_install_gem(File.join(PROJECT_ROOT, "#{gem_name}.gemspec"))
+end
+
+Given /^PENDING/ do
+  pending
+end
+
+Given /^Airbrake server is not responding$/ do
+  bundle_gem("sham_rack")
+  content = <<-CONTENT
+  require 'sham_rack'
+
+  Airbrake.configuration.logger = Logger.new STDOUT
+
+  ShamRack.at("api.airbrake.io") {["500", { "Content-type" => "text/xml" }, ["Internal server error"]]}
+
+  CONTENT
+  target = File.join(rails_root, 'config', 'initializers', 'airbrake_shim.rb')
+  File.open(target,"w") { |f| f.write content }
+end
+
 When /^I generate a new Rails application$/ do
   @terminal.cd(TEMP_DIR)
-  version_string = ENV['RAILS_VERSION']
 
   rails3 = version_string =~ /^3/
 
@@ -15,17 +36,21 @@ When /^I generate a new Rails application$/ do
 
   load_rails = <<-RUBY
     gem 'rails', '#{version_string}'; \
-    load Gem.bin_path('rails', 'rails', '#{version_string}')
+    load Gem.bin_path('#{version_string >= "3.2.0" ? "railties" : "rails"}', 'rails', '#{version_string}')
   RUBY
 
   @terminal.run(%{ruby -rrubygems -rthread -e "#{load_rails.strip!}" #{rails_create_command} rails_root})
   if rails_root_exists?
-    @terminal.echo("Generated a Rails #{version_string} application")
+    @terminal.echo("Generated a Rails #{version_string.strip} application")
   else
     raise "Unable to generate a Rails application:\n#{@terminal.output}"
   end
   require_thread
-  When %{I configure my application to require the "rake" gem with version "0.8.7"}
+  if version_string >= "3.1.0"
+    When %{I configure my application to require the "therubyracer" gem with version "0.10.1"}
+  elsif version_string =~ /2.3.14/
+    monkeypatch_old_version
+  end
   config_gem_dependencies unless rails3
 end
 
@@ -45,8 +70,9 @@ Given /^I have installed the "([^\"]*)" gem$/ do |gem_name|
   @terminal.install_gem(gem_name)
 end
 
-Given /^I have built and installed the "([^\"]*)" gem$/ do |gem_name|
-  @terminal.build_and_install_gem(File.join(PROJECT_ROOT, "#{gem_name}.gemspec"))
+
+When /^I configure my application to require the "capistrano" gem if necessary$/ do
+  When %{I configure my application to require the "capistrano" gem} if version_string >= "3.0.0"
 end
 
 When /^I configure my application to require the "([^\"]*)" gem(?: with version "(.+)")?$/ do |gem_name, version|
@@ -72,19 +98,20 @@ When /^I run "([^\"]*)"$/ do |command|
   @terminal.run(command)
 end
 
-Then /^I should receive a Airbrake notification$/ do
-  Then %{I should see "[Airbrake] Success: Net::HTTPOK"}
+Then /^I should( not)? receive a Airbrake notification$/ do |or_should_not|
+  Then %{I should#{or_should_not} see "** [Airbrake] Response from Airbrake:"}
+  And %{I should#{or_should_not} see "b6817316-9c45-ed26-45eb-780dbb86aadb"}
+  And %{I should#{or_should_not} see "http://airbrake.io/locate/b6817316-9c45-ed26-45eb-780dbb86aadb"}
 end
 
 Then /^I should receive two Airbrake notifications$/ do
-  @terminal.output.scan(/\[Airbrake\] Success: Net::HTTPOK/).size.should == 2
+  @terminal.output.scan(/\[Airbrake\] Response from Airbrake:/).size.should == 2
 end
 
 When /^I configure the Airbrake shim$/ do
   if bundler_manages_gems?
     bundle_gem("sham_rack")
   end
-
   shim_file = File.join(PROJECT_ROOT, 'features', 'support', 'airbrake_shim.rb.template')
   if rails_supports_initializers?
     target = File.join(rails_root, 'config', 'initializers', 'airbrake_shim.rb')
@@ -95,6 +122,8 @@ When /^I configure the Airbrake shim$/ do
       file.write IO.read(shim_file)
     end
   end
+  target = File.join(rails_root, 'config', 'initializers', 'airbrake_shim.rb')
+  FileUtils.cp(shim_file, target)
 end
 
 When /^I configure the notifier to use "([^\"]*)" as an API key$/ do |api_key|
@@ -178,7 +207,7 @@ end
 
 When /^I install cached gems$/ do
   if bundler_manages_gems?
-    When %{I run "bundle install"}
+    Then %{I run "bundle install"}
   end
 end
 
@@ -306,18 +335,33 @@ When /^I configure the Heroku gem shim with "([^\"]*)"( and multiple app support
   heroku_script_bin = File.join(TEMP_DIR, "bin")
   FileUtils.mkdir_p(heroku_script_bin)
   heroku_script     = File.join(heroku_script_bin, "heroku")
+  heroku_env_vars = <<-VARS
+AIRBRAKE_API_KEY    => myapikey
+  APP_NAME            => cold-moon-2929
+  BUNDLE_WITHOUT      => development:test
+  COMMIT_HASH         => lj32j42ss9332jfa2
+  DATABASE_URL        => postgres://fchovwjcyb:QLPVWmBBbf4hCG_YMrtV@ec3-107-28-193-23.compute-1.amazonaws.com/fhcvojwwcyb
+  LANG                => en_US.UTF-8
+  LAST_GIT_BY         => kensa
+  RACK_ENV            => production
+  SHARED_DATABASE_URL => postgres://fchovwjcyb:QLPVwMbbbF8Hcg_yMrtV@ec2-94-29-181-224.compute-1.amazonaws.com/fhcvojcwwyb
+  STACK               => bamboo-mri-1.9.2
+  URL                 => cold-moon-2929.heroku.com
+  VARS
   single_app_script = <<-SINGLE
-    #!/bin/bash
-    if [[ $1 == 'console' && $2 == 'puts ENV[%{HOPTOAD_API_KEY}]' ]]; then
-      echo #{api_key}
-    fi
+#!/bin/bash
+if [ $1 == 'config' ]
+then
+  echo "#{heroku_env_vars}"
+fi
   SINGLE
 
   multi_app_script = <<-MULTI
-    #!/bin/bash
-    if [[ $1 == 'console' && $2 == '--app' && $4 == 'puts ENV[%{HOPTOAD_API_KEY}]' ]]; then
-      echo #{api_key}
-    fi
+#!/bin/bash
+if [[ $1 == 'config' && $2 == '--app' ]]
+then
+  echo "#{heroku_env_vars}"
+fi
   MULTI
 
   File.open(heroku_script, "w") do |f|
@@ -363,7 +407,7 @@ end
 
 Then /^I should see the notifier JavaScript for the following:$/ do |table|
   hash = table.hashes.first
-  host        = hash['host']        || 'airbrake.io'
+  host        = hash['host']        || 'api.airbrake.io'
   secure      = hash['secure']      || false
   api_key     = hash['api_key']
   environment = hash['environment'] || 'production'
@@ -399,3 +443,36 @@ Then /^I should not see notifier JavaScript$/ do
   response = Nokogiri::HTML.parse('<html>' + @terminal.output.split('<html>').last)
   response.at_css("script[type='text/javascript'][src$='/javascripts/notifier.js']").should be_nil
 end
+
+
+When /^I configure usage of Airbrake$/ do
+    When %{I configure my application to require the "airbrake" gem}
+    When %{I run the airbrake generator with "-k myapikey"}
+    @terminal.flush!                                              # flush the results of setting up Airbrake (generates notification)
+end
+
+
+When /^I have set up authentication system in my app that uses "([^\"]*)"$/ do |current_user|
+  application_controller = File.join(rails_root, 'app', 'controllers', "application_controller.rb")
+  definition =
+    """
+  class ApplicationController < ActionController::Base
+    def consider_all_requests_local; false; end
+    def local_request?; false; end
+
+    # this is the ultimate authentication system, devise is history
+    def #{current_user}
+      Struct.new(:attributes).new({:id => 1,:name => 'Bender',:email => 'bender@beer.com',:username => 'b3nd0r'})
+    end
+  end
+  """
+  File.open(application_controller, "w") {|file| file.puts definition }
+end
+
+Then /^the Airbrake notification should contain user details$/ do
+  Then %{I should see "Bender"}
+  And %{I should see "bender@beer.com"}
+  And %{I should see "<id>1</id>"}
+  And %{I should see "b3nd0r"}
+end
+

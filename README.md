@@ -11,28 +11,10 @@ Help
 
 For help with using Airbrake and this notifier visit [our support site](http://help.airbrake.io).
 
-For discussion of Airbrake development check out the [mailing list](http://groups.google.com/group/hoptoad-notifier-dev).
-
 For SSL verification see the [Resources](https://github.com/airbrake/airbrake/blob/master/resources/README.md).
 
 Rails Installation
 ------------------
-
-### Remove hoptoad_notifier
-
-in your ApplicationController, REMOVE this line:
-
-    include HoptoadNotifiable
-
-In your config/environment* files, remove all references to HoptoadNotifier
-
-Remove the vendor/plugins/hoptoad_notifier directory.
-
-### Remove hoptoad_notifier plugin
-
-Remove the vendor/plugins/hoptoad_notifier directory before installing the gem, or run:
-
-    script/plugin remove hoptoad_notifier
 
 ### Rails 3.x
 
@@ -54,6 +36,10 @@ The generator creates a file under `config/initializers/airbrake.rb` configuring
 Add the airbrake gem to your app. In config/environment.rb:
 
     config.gem 'airbrake'
+    
+or if you are using bundler:
+
+    gem 'airbrake', :require => 'airbrake/rails'
 
 Then from your project's RAILS_ROOT, and in your development environment, run:
 
@@ -135,6 +121,21 @@ this rake task (from RAILS_ROOT):
 If everything is configured properly, that task will send a notice to Airbrake
 which will be visible immediately.
 
+### Removing hoptoad_notifier
+
+in your ApplicationController, REMOVE this line:
+
+    include HoptoadNotifiable
+
+In your config/environment* files, remove all references to HoptoadNotifier
+
+Remove the vendor/plugins/hoptoad_notifier directory.
+
+### Remove hoptoad_notifier plugin
+
+Remove the vendor/plugins/hoptoad_notifier directory before installing the gem, or run:
+
+    script/plugin remove hoptoad_notifier
 
 Non-rails apps using Bundler
 ----------------------------
@@ -162,9 +163,11 @@ middleware:
     end
 
     app = Rack::Builder.app do
-      use Airbrake::Rack
       run lambda { |env| raise "Rack down" }
     end
+    
+    use Airbrake::Rack
+    run app
 
 Sinatra
 -------
@@ -187,9 +190,9 @@ Using airbrake in a Sinatra app is just like a Rack app:
 Usage
 -----
 
-For the most part, Airbrake works for itself. Once you've included the notifier
-in your ApplicationController (which is now done automatically by the gem),
-all errors will be rescued by the #rescue_action_in_public provided by the gem.
+For the most part, Airbrake works for itself. 
+
+It intercepts the exception middleware calls, sends notifications and continues the middleware call chain.
 
 If you want to log arbitrary things which you've rescued yourself from a
 controller, you can do something like this:
@@ -209,6 +212,15 @@ To perform custom error processing after Airbrake has been notified, define the
 instance method `#rescue_action_in_public_without_airbrake(exception)` in your
 controller.
 
+Rake Tasks
+----------
+Do you want Airbrake to report exceptions that happen inside a rake task?
+    
+    Airbrake.configure do |config|
+      ...
+      config.rescue_rake_exceptions = true
+    end
+
 Informing the User
 ------------------
 
@@ -222,12 +234,90 @@ then that comment will be replaced with the text "Airbrake Error [errnum]". You 
 of the informer by setting `config.user_information`. Airbrake will replace "{{ error_id }}" with the
 ID of the error that is returned from Airbrake.
 
-  Airbrake.configure do |config|
+    Airbrake.configure do |config|
     ...
-    config.user_information = "<p>Tell the devs that it was <strong>{{ error_id }}</strong>'s fault.</p>"
-  end
+      config.user_information = "<p>Tell the devs that it was <strong>{{ error_id }}</strong>'s fault.</p>"
+    end
 
 You can also turn the middleware that handles this completely off by setting `config.user_information` to false.
+
+Note that this feature is reading the error id from `env['airbrake.error_id']`. When the exception is caught
+automatically in a controller, Airbrake sets that value. If you're, however, calling the Airbrake methods like
+`Airbrake#notify` or `Airbrake#notify_or_ignore`, please make sure you set that value. So the proper way of calling the 
+"manual" methods would be `env['airbrake.error_id'] = Airbrake.notify_or_ignore(...)`.
+
+Current user information
+------------------------
+Airbrake provides information about the current logged in user, so you
+can easily determine the user who experienced the error in your app.
+
+It uses `current_user` and `current_member` to identify the
+authenticated user, where `current_user` takes precendence.
+
+If you use different naming, please add the following lines to your
+controller:
+
+    alias_method :current_duck, :current_user
+    helper_method :current_duck
+
+Voila! You'll get information about a duck that experienced a crash of
+your app.
+
+By default Airbrake collects the following attributes:
+* id
+* name
+* username
+* email
+
+You can also customize attributes that will be collected
+
+    Airbrake.configure do |config|
+      ...
+      # collect only user ids
+      config.user_attributes = [:id] # ["id"] also works
+    end
+
+Asynchronous notifications with Airbrake
+----------------------------------------
+When your user experiences error using your application, it gets sent to
+Airbrake server. This introduces a considerable latency in the response. 
+
+Asynchronous notification sending deals with this problem. Airbrake uses 
+[girl_friday](https://github.com/mperham/girl_friday) to achieve this
+. (thanks Mike)
+
+It's disabled by default and you can enable it in your Airbrake
+configuration.
+
+    Airbrake.configure do |config|
+      ...
+      config.async = true
+    end
+
+*Note that this feature is enabled with JRuby 1.6+, Rubinius 2.0+ and*
+*Ruby 1.9+. It does not support Ruby 1.8 because of its poor threading*
+*support.*
+
+For implementing custom asynchronous notice delivery, send a block to `config.async`. It
+receives `notice` param. Pass it to `Airbrake.sender.send_to_airbrake` method
+to do actual delivery. In this way it's possible to move Airbrake notification
+even in background worker(e.g. Resque or Sidekiq).
+
+    # Thread-based asynchronous send
+    Airbrake.configure do |config|
+      ...
+      config.async do |notice|
+        Thread.new { Airbrake.sender.send_to_airbrake(notice) }
+      end
+    end
+
+    # Resque-like configuration
+    Airbrake.configure do |config|
+      ...
+      config.async do |notice|
+        Resque.enqueue(AirbrakeDeliveryWorker, notice)
+      end
+    end
 
 Tracking deployments in Airbrake
 --------------------------------
@@ -262,7 +352,7 @@ controllers:
       }
       my_unpredicable_method(params)
     rescue => e
-      Airbrake.notify(
+      Airbrake.notify_or_ignore(
         :error_class   => "Special Error",
         :error_message => "Special Error: #{e.message}",
         :parameters    => params
@@ -310,12 +400,14 @@ notifications (when #notify is called directly).
 
 Airbrake ignores the following exceptions by default:
 
-    AbstractController::ActionNotFound
     ActiveRecord::RecordNotFound
     ActionController::RoutingError
     ActionController::InvalidAuthenticityToken
-    ActionController::UnknownAction
     CGI::Session::CookieStore::TamperedWithCookie
+    ActionController::UnknownAction
+    AbstractController::ActionNotFound
+    Mongoid::Errors::DocumentNotFound
+
 
 To ignore errors in addition to those, specify their names in your Airbrake
 configuration block.
@@ -369,7 +461,7 @@ use code like this in your test_helper.rb or spec_helper.rb files to redefine
 that method so those errors are not reported while running tests.
 
     module Airbrake
-      def self.notify(thing)
+      def self.notify(exception, opts = {})
         # do nothing.
       end
     end
@@ -380,10 +472,21 @@ Proxy Support
 The notifier supports using a proxy, if your server is not able to directly reach the Airbrake servers. To configure the proxy settings, added the following information to your Airbrake configuration block.
 
     Airbrake.configure do |config|
-      config.proxy_host = ...
-      config.proxy_port = ...
-      config.proxy_user = ...
-      config.proxy_pass = ...
+      config.proxy_host = proxy.host.com
+      config.proxy_port = 4038
+      config.proxy_user = foo # optional
+      config.proxy_pass = bar # optional
+      
+Logging
+------------
+
+Airbrake uses the logger from your Rails application by default, presumably STDOUT. If you don't like Airbrake scribbling to your 
+standard output, just pass another `Logger` instance inside your configuration:
+
+    Airbrake.configure do |config|
+      ...
+      config.logger = Logger.new("path/to/your/log/file")
+    end
 
 Supported Rails versions
 ------------------------
@@ -391,8 +494,8 @@ Supported Rails versions
 See SUPPORTED_RAILS_VERSIONS for a list of official supported versions of
 Rails.
 
-Please open up a support ticket ( http://help.airbrake.io ) if
-you're using a version of Rails that is listed above and the notifier is
+Please open up a support ticket ( http://help.airbrake.io ) or submit a new github issue
+if you're using a version of Rails that is listed above and the notifier is
 not working properly.
 
 Javascript Notifer
@@ -418,6 +521,12 @@ It's important to insert this very high in the markup, above all other javascrip
 
 This helper will automatically use the API key, host, and port specified in the configuration.
 
+The Javascript notifier tends to send much more notifications than the base Rails project.
+If you want to receive them into a separate Airbrake project, specify its
+API key in the `js_api_key` option.
+
+    config.js_api_key = 'another-projects-api-key'
+
 To test the Javascript notifier in development environment, overwrite (temporarily) the development_environments option:
 
     Airbrake.configure do |config|
@@ -435,13 +544,13 @@ Credits
 
 ![thoughtbot](http://thoughtbot.com/images/tm/logo.png)
 
-Airbrake is maintained and funded by [thoughtbot, inc](http://thoughtbot.com/community)
+Airbrake is maintained and funded by [airbrake.io](http://airbrake.io)
 
 Thank you to all [the contributors](https://github.com/airbrake/airbrake/contributors)!
 
-The names and logos for thoughtbot are trademarks of thoughtbot, inc.
+The names and logos for Airbrake, thoughtbot are trademarks of their respective holders.
 
 License
 -------
 
-Airbrake is Copyright © 2008-2011 thoughtbot. It is free software, and may be redistributed under the terms specified in the MIT-LICENSE file.
+Airbrake is Copyright © 2008-2012 Airbrake. It is free software, and may be redistributed under the terms specified in the MIT-LICENSE file.

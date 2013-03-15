@@ -1,11 +1,11 @@
+require 'simplecov'
+SimpleCov.start
 require 'test/unit'
 require 'rubygems'
 
 $LOAD_PATH << File.expand_path(File.join(File.dirname(__FILE__), "..", "lib"))
 
 require 'thread'
-
-require "bundler/setup"
 
 require 'shoulda'
 require 'mocha'
@@ -132,16 +132,6 @@ class Test::Unit::TestCase
     BacktracedException.new(opts)
   end
 
-  class BacktracedException < Exception
-    attr_accessor :backtrace
-    def initialize(opts)
-      @backtrace = opts[:backtrace]
-    end
-    def set_backtrace(bt)
-      @backtrace = bt
-    end
-  end
-
   def build_notice_data(exception = nil)
     exception ||= build_exception
     {
@@ -185,7 +175,7 @@ class Test::Unit::TestCase
            "but found #{nodes.map { |n| n.content }} in #{nodes.size} matching nodes." +
            "Document:\n#{document.to_s}"
   end
-  
+
   def assert_logged(expected)
     assert_received(Airbrake, :write_verbose_log) do |expect|
       expect.with {|actual| actual =~ expected }
@@ -198,7 +188,7 @@ class Test::Unit::TestCase
     end
   end
 
-  
+
 end
 
 module DefinesConstants
@@ -259,3 +249,15 @@ class FakeLogger
   def fatal(*args); end
 end
 
+class BacktracedException < Exception
+  attr_accessor :backtrace
+  def initialize(opts)
+    @backtrace = opts[:backtrace]
+  end
+  def set_backtrace(bt)
+    @backtrace = bt
+  end
+  def message
+    "Something went wrong. Did you press the red button?"
+  end
+end

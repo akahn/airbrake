@@ -2,13 +2,13 @@ module Airbrake
   # Used to set up and modify settings for the notifier.
   class Configuration
 
-    OPTIONS = [:api_key, :backtrace_filters, :development_environments,
+    OPTIONS = [:api_key, :js_api_key, :backtrace_filters, :development_environments,
         :development_lookup, :environment_name, :host,
         :http_open_timeout, :http_read_timeout, :ignore, :ignore_by_filters,
         :ignore_user_agent, :notifier_name, :notifier_url, :notifier_version,
         :params_filters, :project_root, :port, :protocol, :proxy_host,
         :proxy_pass, :proxy_port, :proxy_user, :secure, :use_system_ssl_cert_chain,
-        :framework, :user_information, :rescue_rake_exceptions,
+        :framework, :user_information, :rescue_rake_exceptions, :rake_environment_filters,
         :elasticsearch_host, :elasticsearch_port, :elasticsearch_index].freeze
 
     # Add options for elasticsearch endpoint
@@ -16,6 +16,12 @@ module Airbrake
 
     # The API key for your project, found on the project edit form.
     attr_accessor :api_key
+
+    # If you're using the Javascript notifier and would want to separate
+    # Javascript notifications into another Airbrake project, specify
+    # its APi key here.
+    # Defaults to #api_key (of the base project)
+    attr_writer :js_api_key
 
     # The host to connect to (defaults to airbrake.io).
     attr_accessor :host
@@ -58,6 +64,10 @@ module Airbrake
     # A list of filters for ignoring exceptions. See #ignore_by_filter.
     attr_reader :ignore_by_filters
 
+    # A list of environment keys that will be ignored from what is sent to Airbrake server
+    # Empty by default and used only in rake handler
+    attr_reader :rake_environment_filters
+
     # A list of exception classes to ignore. The array can be appended to.
     attr_reader :ignore
 
@@ -98,11 +108,17 @@ module Airbrake
     # (boolean or nil; set to nil to catch exceptions when rake isn't running from a terminal; default is nil)
     attr_accessor :rescue_rake_exceptions
 
+    # User attributes that are being captured
+    attr_accessor :user_attributes
+
+
     DEFAULT_PARAMS_FILTERS = %w(password password_confirmation).freeze
+
+    DEFAULT_USER_ATTRIBUTES = %w(id name username email).freeze
 
     DEFAULT_BACKTRACE_FILTERS = [
       lambda { |line|
-        if defined?(Airbrake.configuration.project_root) && Airbrake.configuration.project_root.to_s != '' 
+        if defined?(Airbrake.configuration.project_root) && Airbrake.configuration.project_root.to_s != ''
           line.sub(/#{Airbrake.configuration.project_root}/, "[PROJECT_ROOT]")
         else
           line
@@ -133,7 +149,7 @@ module Airbrake
     def initialize
       @secure                   = false
       @use_system_ssl_cert_chain= false
-      @host                     = 'airbrake.io'
+      @host                     = 'api.airbrake.io'
       @http_open_timeout        = 2
       @http_read_timeout        = 5
       @params_filters           = DEFAULT_PARAMS_FILTERS.dup
@@ -145,10 +161,12 @@ module Airbrake
       @development_lookup       = true
       @notifier_name            = 'Airbrake Notifier'
       @notifier_version         = VERSION
-      @notifier_url             = 'http://airbrake.io'
+      @notifier_url             = 'https://github.com/airbrake/airbrake'
       @framework                = 'Standalone'
       @user_information         = 'Airbrake Error {{error_id}}'
       @rescue_rake_exceptions   = nil
+      @user_attributes          = DEFAULT_USER_ATTRIBUTES.dup
+      @rake_environment_filters = []
     end
 
     # Takes a block and adds it to the list of backtrace filters. When the filters
@@ -226,6 +244,9 @@ module Airbrake
       @port || default_port
     end
 
+    # Determines whether protocol should be "http" or "https".
+    # @return [String] Returns +"http"+ if you've set secure to +false+ in
+    # configuration, and +"https"+ otherwise.
     def protocol
       if secure?
         'https'
@@ -234,13 +255,29 @@ module Airbrake
       end
     end
 
-    def js_notifier=(*args)
-      warn '[AIRBRAKE] config.js_notifier has been deprecated and has no effect.  You should use <%= airbrake_javascript_notifier %> directly at the top of your layouts.  Be sure to place it before all other javascript.'
+    # Should Airbrake send notifications asynchronously
+    # (boolean, nil or callable; default is nil).
+    # Can be used as callable-setter when block provided.
+    def async(&block)
+      if block_given?
+        @async = block
+      end
+      @async
+    end
+    alias_method :async?, :async
+
+    def async=(use_default_or_this)
+      @async = use_default_or_this == true ?
+        default_async_processor :
+        use_default_or_this
     end
 
-    def environment_filters
-      warn 'config.environment_filters has been deprecated and has no effect.'
-      []
+    def js_api_key
+      @js_api_key || self.api_key
+    end
+
+    def js_notifier=(*args)
+      warn '[AIRBRAKE] config.js_notifier has been deprecated and has no effect.  You should use <%= airbrake_javascript_notifier %> directly at the top of your layouts.  Be sure to place it before all other javascript.'
     end
 
     def ca_bundle_path
@@ -256,6 +293,9 @@ module Airbrake
     end
 
   private
+    # Determines what port should we use for sending notices.
+    # @return [Fixnum] Returns 443 if you've set secure to true in your
+    # configuration, and 80 otherwise.
     def default_port
       if secure?
         443
@@ -264,6 +304,12 @@ module Airbrake
       end
     end
 
+    # Async notice delivery defaults to girl friday
+    def default_async_processor
+      queue = GirlFriday::WorkQueue.new(nil, :size => 3) do |notice|
+        Airbrake.sender.send_to_airbrake(notice)
+      end
+      lambda {|notice| queue << notice}
+    end
   end
-
 end

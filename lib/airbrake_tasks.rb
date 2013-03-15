@@ -1,6 +1,5 @@
 require 'net/http'
 require 'uri'
-require 'active_support'
 
 # Capistrano tasks for notifying Airbrake of deploys
 module AirbrakeTasks
@@ -9,12 +8,14 @@ module AirbrakeTasks
   #
   # @param [Hash] opts Data about the deploy that is set to Airbrake
   #
+  # @option opts [String] :api_key Api key of you Airbrake application
   # @option opts [String] :rails_env Environment of the deploy (production, staging)
   # @option opts [String] :scm_revision The given revision/sha that is being deployed
   # @option opts [String] :scm_repository Address of your repository to help with code lookups
   # @option opts [String] :local_username Who is deploying
   def self.deploy(opts = {})
-    if Airbrake.configuration.api_key.blank?
+    api_key = opts.delete(:api_key) || Airbrake.configuration.api_key
+    if api_key.blank?
       puts "I don't seem to be configured with an API key.  Please check your configuration."
       return false
     end
@@ -25,10 +26,10 @@ module AirbrakeTasks
     end
 
     dry_run = opts.delete(:dry_run)
-    params = {'api_key' => opts.delete(:api_key) || Airbrake.configuration.api_key}
+    params = {'api_key' => api_key}
     opts.each {|k,v| params["deploy[#{k}]"] = v }
 
-    host = Airbrake.configuration.host || 'airbrake.io'
+    host = Airbrake.configuration.host || 'api.airbrake.io'
     port = Airbrake.configuration.port
 
     proxy = Net::HTTP.Proxy(Airbrake.configuration.proxy_host,
@@ -37,7 +38,7 @@ module AirbrakeTasks
                             Airbrake.configuration.proxy_pass)
     http = proxy.new(host, port)
 
-    
+
 
     # Handle Security
     if Airbrake.configuration.secure?
@@ -45,10 +46,10 @@ module AirbrakeTasks
       http.ca_file      = Airbrake.configuration.ca_bundle_path
       http.verify_mode  = OpenSSL::SSL::VERIFY_PEER
     end
-    
+
     post = Net::HTTP::Post.new("/deploys.txt")
     post.set_form_data(params)
-  
+
     if dry_run
       puts http.inspect, params.inspect
       return true
