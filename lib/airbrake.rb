@@ -133,16 +133,12 @@ module Airbrake
 
     def send_notice(notice)
       if configuration.public?
-<<<<<<< HEAD
-        sender.send_to_elasticsearch(notice.dup.to_json)
-        sender.send_to_airbrake(notice.to_xml)
-=======
         if configuration.async?
           configuration.async.call(notice)
         else
+          sender.send_to_elasticsearch(notice.dup.to_json)
           sender.send_to_airbrake(notice)
         end
->>>>>>> v3.1.6
       end
     end
 
