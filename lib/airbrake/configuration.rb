@@ -9,10 +9,10 @@ module Airbrake
         :params_filters, :project_root, :port, :protocol, :proxy_host,
         :proxy_pass, :proxy_port, :proxy_user, :secure, :use_system_ssl_cert_chain,
         :framework, :user_information, :rescue_rake_exceptions, :rake_environment_filters,
-        :elasticsearch_host, :elasticsearch_port, :elasticsearch_index].freeze
+        :elasticsearch_enabled, :elasticsearch_host, :elasticsearch_port, :elasticsearch_index].freeze
 
     # Add options for elasticsearch endpoint
-    attr_accessor :elasticsearch_host, :elasticsearch_port, :elasticsearch_index
+    attr_accessor :elasticsearch_enabled, :elasticsearch_host, :elasticsearch_port, :elasticsearch_index
 
     # The API key for your project, found on the project edit form.
     attr_accessor :api_key
@@ -167,6 +167,7 @@ module Airbrake
       @rescue_rake_exceptions   = nil
       @user_attributes          = DEFAULT_USER_ATTRIBUTES.dup
       @rake_environment_filters = []
+      @elasticsearch_enabled    = false
     end
 
     # Takes a block and adds it to the list of backtrace filters. When the filters
