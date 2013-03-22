@@ -136,7 +136,9 @@ module Airbrake
         if configuration.async?
           configuration.async.call(notice)
         else
-          sender.send_to_elasticsearch(notice.dup.to_json)
+          if configuration.elasticsearch_enabled
+            sender.send_to_elasticsearch(notice.dup.to_json)
+          end
           sender.send_to_airbrake(notice)
         end
       end
