@@ -164,10 +164,12 @@ module Airbrake
         h[:request_action] = action
         h[:request_params] = parameters
         h[:session] = session_data
-        h[:cgi_data] = cgi_data
-        h[:cgi_data].delete("HTTP_COOKIE")
-        h[:cgi_data].delete("rack.request.cookie_string")
-        h[:cgi_data].delete("rack.request.cookie_hash")
+        if cgi_data
+          h[:cgi_data] = cgi_data
+          h[:cgi_data].delete("HTTP_COOKIE")
+          h[:cgi_data].delete("rack.request.cookie_string")
+          h[:cgi_data].delete("rack.request.cookie_hash")
+        end
         h[:project_root] = project_root
         h[:environment_name] = environment_name
       end
