@@ -12,7 +12,7 @@ module Airbrake
                    Net::ProtocolError,
                    Errno::ECONNREFUSED].freeze
 
-    attr_accessor :elasticsearch_host, :elasticsearch_port, :elasticsearch_connection, :elasticsearch_index
+    attr_accessor :bughutch_host, :bughutch_port, :bughutch_connection
 
     def initialize(options = {})
       [ :proxy_host,
@@ -26,26 +26,43 @@ module Airbrake
         :use_system_ssl_cert_chain,
         :http_open_timeout,
         :http_read_timeout,
-        :elasticsearch_host,
-        :elasticsearch_port,
-        :elasticsearch_index
+        :bughutch_host,
+        :bughutch_port,
       ].each do |option|
         instance_variable_set("@#{option}", options[option])
       end
     end
 
-    def send_to_elasticsearch(data)
-      begin
-        es = ElasticSearch.new("http://#{elasticsearch_host}:#{elasticsearch_port}", :index => "#{elasticsearch_index}", :type => "exception")
-        resp = es.index(data)
-      rescue ElasticSearch::ConnectionFailed
-        Airbrake.logger.warn("Could not send exception to Elasticsearch: connection failed")
-      rescue ElasticSearch::RequestError => e
-        Airbrake.logger.warn(e)
-      rescue e
-        Airbrake.logger.warn(e)
+    def send_to_bughutch(notice)
+      data = notice.to_json
+      http = setup_bughutch_http_connection
+
+      response = begin
+                   http.post(url.path, data, HEADERS)
+                 rescue *HTTP_ERRORS => e
+                   log :level => :error,
+                       :message => "Unable to contact the Bughutch server. HTTP Error=#{e}"
+                   nil
+                 end
+
+      case response
+      when Net::HTTPSuccess then
+        log :level => :info,
+            :message => "Success: #{response.class}",
+            :response => response
+      else
+        log :level => :error,
+            :message => "Failure: #{response.class}",
+            :response => response,
+            :notice => notice
       end
-      Airbrake.logger.debug(resp)
+
+    rescue => e
+      log :level => :error,
+        :message => "[Airbrake::Sender#send_to_bughutch] Cannot send notification. Error: #{e.class}" +
+        " - #{e.message}\nBacktrace:\n#{e.backtrace.join("\n\t")}"
+
+      nil
     end
 
     # Sends the notice data off to Airbrake for processing.
@@ -140,6 +157,31 @@ module Airbrake
     rescue => e
       log :level => :error,
           :message => "[Airbrake::Sender#setup_http_connection] Failure initializing the HTTP connection.\n" +
+                      "Error: #{e.class} - #{e.message}\nBacktrace:\n#{e.backtrace.join("\n\t")}"
+      raise e
+    end
+
+    def setup_bughutch_http_connection
+      http =
+        Net::HTTP::Proxy(proxy_host, proxy_port, proxy_user, proxy_pass).
+        new(bughutch_host, bughutch_port)
+
+      http.read_timeout = http_read_timeout
+      http.open_timeout = http_open_timeout
+
+      if secure?
+        http.use_ssl     = true
+
+        http.ca_file      = Airbrake.configuration.ca_bundle_path
+        http.verify_mode  = OpenSSL::SSL::VERIFY_PEER
+      else
+        http.use_ssl     = false
+      end
+
+      http
+    rescue => e
+      log :level => :error,
+          :message => "[Airbrake::Sender#setup_bughutch_http_connection] Failure initializing the HTTP connection.\n" +
                       "Error: #{e.class} - #{e.message}\nBacktrace:\n#{e.backtrace.join("\n\t")}"
       raise e
     end
