@@ -9,10 +9,10 @@ module Airbrake
         :params_filters, :project_root, :port, :protocol, :proxy_host,
         :proxy_pass, :proxy_port, :proxy_user, :secure, :use_system_ssl_cert_chain,
         :framework, :user_information, :rescue_rake_exceptions, :rake_environment_filters,
-        :bughutch_enabled, :bughutch_host, :bughutch_port].freeze
+        :bughutch_enabled, :bughutch_host, :bughutch_port, :application_name].freeze
 
     # Add options for bughutch endpoint
-    attr_accessor :bughutch_enabled, :bughutch_host, :bughutch_port, :bughutch_index
+    attr_accessor :bughutch_enabled, :bughutch_host, :bughutch_port, :application_name
 
     # The API key for your project, found on the project edit form.
     attr_accessor :api_key
@@ -168,6 +168,7 @@ module Airbrake
       @user_attributes          = DEFAULT_USER_ATTRIBUTES.dup
       @rake_environment_filters = []
       @bughutch_enabled         = false
+      @bughutch_port            = 80
     end
 
     # Takes a block and adds it to the list of backtrace filters. When the filters

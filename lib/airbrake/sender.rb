@@ -28,6 +28,7 @@ module Airbrake
         :http_read_timeout,
         :bughutch_host,
         :bughutch_port,
+        :application_name
       ].each do |option|
         instance_variable_set("@#{option}", options[option])
       end
@@ -38,7 +39,7 @@ module Airbrake
       http = setup_bughutch_http_connection
 
       response = begin
-                   http.post(url.path, data, HEADERS)
+                   http.post(bughutch_url.path, data, HEADERS)
                  rescue *HTTP_ERRORS => e
                    log :level => :error,
                        :message => "Unable to contact the Bughutch server. HTTP Error=#{e}"
@@ -123,6 +124,10 @@ module Airbrake
 
     def url
       URI.parse("#{protocol}://#{host}:#{port}").merge(NOTICES_URI)
+    end
+
+    def bughutch_url
+      URI.parse("#{protocol}://#{host}:#{port}/exceptions/#{application_name}")
     end
 
     def log(opts = {})
