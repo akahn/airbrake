@@ -12,7 +12,7 @@ module Airbrake
                    Net::ProtocolError,
                    Errno::ECONNREFUSED].freeze
 
-    attr_accessor :bughutch_host, :bughutch_port, :bughutch_connection
+    attr_accessor :bughutch_host, :bughutch_port, :application_name
 
     def initialize(options = {})
       [ :proxy_host,
