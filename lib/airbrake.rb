@@ -136,7 +136,7 @@ module Airbrake
         if configuration.async?
           configuration.async.call(notice)
         else
-          if configuration.elasticsearch_enabled
+          if configuration.bughutch_enabled
             sender.send_to_bughutch(notice.dup.to_json)
           end
           sender.send_to_airbrake(notice)
