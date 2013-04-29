@@ -127,7 +127,7 @@ module Airbrake
     end
 
     def bughutch_url
-      URI.parse("#{protocol}://#{host}:#{port}/exceptions/#{application_name}")
+      URI.parse("#{protocol}://#{bughutch_host}:#{bughutch_port}/exceptions/#{application_name}")
     end
 
     def log(opts = {})
